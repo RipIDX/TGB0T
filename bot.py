@@ -13,7 +13,7 @@ TOKEN = os.environ.get("BOT_TOKEN", "8800452125:AAETWvKIeP6BgDKWaSAmAhGm6WAq8TCm
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6099860667"))
 SECRET_KEY = os.environ.get("SECRET_KEY", "R0T-K1T")
 PROXY = os.environ.get("PROXY", "")  # например socks5://user:pass@host:port
-WEBHOOK_URL = os.environ.get("https://gw.bothost.ru/nl4/api/webhooks/github?token=09195eee6ee326686ddedd677cba19b04d2e5532f1b17280", "")  # публичный URL вашего скрипта
+WEBHOOK_URL = os.getenv('DOMAIN', 'https://default.bothost.tech')  # публичный URL вашего скрипта
 
 # === ПРОКСИ ===
 if PROXY:
