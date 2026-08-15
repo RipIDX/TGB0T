@@ -8,11 +8,6 @@ from flask import Flask, request, jsonify
 import telebot
 from telebot import apihelper
 
-# ===== НАСТРОЙКИ (из переменных окружения или прямо здесь) =====
-TOKEN = os.environ.get("BOT_TOKEN", "8800452125:AAETWvKIeP6BgDKWaSAmAhGm6WAq8TCm7pc")   # ваш токен
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "6099860667"))   # ваш числовой ID
-SECRET_KEY = os.environ.get("SECRET_KEY", "R0T-K1T")  # общий ключ с агентом
-
 # === НАСТРОЙКИ (задайте через переменные окружения или прямо здесь) ===
 TOKEN = os.environ.get("BOT_TOKEN", "8800452125:AAETWvKIeP6BgDKWaSAmAhGm6WAq8TCm7pc")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6099860667"))
