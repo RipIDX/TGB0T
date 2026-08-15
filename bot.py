@@ -114,4 +114,4 @@ if __name__ == '__main__':
     else:
         print("Использую polling (но может не работать без прокси)")
         threading.Thread(target=bot.polling, kwargs={'none_stop': True}, daemon=True).start()
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 3000)))
